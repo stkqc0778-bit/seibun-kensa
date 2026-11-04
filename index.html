@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1e4fd8">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<title>成分記録</title>
+<style>
+:root { --blue:#1e4fd8; --ink:#1b2333; --mute:#5b6478; --line:#d9deea; --bg:#f3f5fa; --card:#ffffff;
+  --ok:#e6f4ea; --okc:#17703a; --ng:#fde7e7; --ngc:#b42318; --att:#fff4d6; --attc:#8a5a00; --gray:#eceff5; --grayc:#4b5563; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --ink:#e6e9f2; --mute:#9aa3b8; --line:#2f3850; --bg:#0f1420; --card:#171d2c; --gray:#23293a; --grayc:#c8cfdf; } }
+:root[data-theme="dark"] { --ink:#e6e9f2; --mute:#9aa3b8; --line:#2f3850; --bg:#0f1420; --card:#171d2c; --gray:#23293a; --grayc:#c8cfdf; }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin:0; font-family: "Yu Gothic UI","Meiryo",sans-serif; color:var(--ink); background:var(--bg); }
+header { background:var(--blue); color:#fff; padding:10px 16px; display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:space-between; }
+header h1 { font-size:18px; margin:0; }
+#syncState { font-size:12px; opacity:.95; }
+main { padding:12px 16px 40px; max-width:1200px; margin:0 auto; }
+nav.tabs { display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap; }
+nav.tabs button { border:1px solid var(--line); background:var(--card); color:var(--ink); padding:8px 14px; border-radius:8px; cursor:pointer; font-size:14px; }
+nav.tabs button.on { background:var(--blue); color:#fff; border-color:var(--blue); }
+section.tab { display:none; } section.tab.on { display:block; }
+.card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px; margin-bottom:12px; }
+.row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:8px; }
+label { font-size:13px; color:var(--mute); }
+input, select, textarea { font:inherit; font-size:14px; padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:var(--card); color:var(--ink); }
+input.num { width:72px; text-align:right; }
+input.wide { width:100%; }
+button.btn { font:inherit; font-size:14px; padding:8px 14px; border-radius:8px; border:1px solid var(--blue); background:var(--blue); color:#fff; cursor:pointer; }
+button.sub { background:var(--card); color:var(--blue); }
+button.danger { background:#fff; color:var(--ngc); border-color:var(--ngc); }
+button:disabled { opacity:.5; cursor:default; }
+.tbl-wrap { overflow-x:auto; border:1px solid var(--line); border-radius:8px; background:var(--card); }
+table { border-collapse:collapse; width:100%; font-size:13px; }
+th, td { border-bottom:1px solid var(--line); padding:5px 6px; text-align:left; white-space:nowrap; }
+th { background:var(--gray); color:var(--grayc); position:sticky; top:0; }
+td.n { text-align:right; font-variant-numeric: tabular-nums; }
+tr.clk { cursor:pointer; } tr.clk:hover td { background:var(--gray); }
+.j { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; font-weight:bold; }
+.j-OK { background:var(--ok); color:var(--okc); } .j-NG { background:var(--ng); color:var(--ngc); }
+.j-注意 { background:var(--att); color:var(--attc); } .j-other { background:var(--gray); color:var(--grayc); }
+.muted { color:var(--mute); font-size:12px; }
+.note { font-size:12px; color:var(--attc); }
+#banner { background:#fff4d6; color:#7a4b00; padding:8px 12px; border-radius:8px; margin-bottom:10px; font-size:13px; }
+#gate { position:fixed; inset:0; background:rgba(15,20,32,.55); display:flex; align-items:center; justify-content:center; padding:16px; z-index:50; }
+#gate .box { background:var(--card); padding:20px; border-radius:12px; width:min(380px,100%); }
+#modal { position:fixed; inset:0; background:rgba(15,20,32,.55); display:none; align-items:flex-start; justify-content:center; padding:24px 12px; overflow:auto; z-index:40; }
+#modal .box { background:var(--card); padding:16px; border-radius:12px; width:min(720px,100%); }
+.grid { display:grid; grid-template-columns: repeat(auto-fill,minmax(120px,1fr)); gap:8px; }
+.grid label { display:flex; flex-direction:column; gap:3px; }
+.err { color:var(--ngc); font-size:13px; }
+#toast { position:fixed; bottom:16px; left:50%; transform:translateX(-50%); background:var(--ink); color:var(--card); padding:8px 14px; border-radius:8px; display:none; font-size:14px; z-index:60; }
+@media (max-width:640px) { main { padding:10px 10px 40px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>成分記録</h1>
+  <div id="syncState">同期先を確認中…</div>
+</header>
+
+<div id="gate" hidden>
+  <div class="box">
+    <h2 style="margin:0 0 8px;font-size:17px;">合言葉を入力</h2>
+    <p class="muted" style="margin:0 0 10px;">関係者だけで共有している合言葉を入力してください。PC ごとに一度入力すれば次回からは不要です。</p>
+    <input id="passIn" type="password" class="wide" placeholder="合言葉" autocomplete="current-password">
+    <div class="row" style="margin-top:10px;"><button class="btn" id="passBtn">入る</button></div>
+    <div id="gateMsg" class="err"></div>
+  </div>
+</div>
+
+<main>
+  <div id="banner" hidden></div>
+  <nav class="tabs">
+    <button data-tab="import" class="on">CSV取込</button>
+    <button data-tab="list">一覧・修正</button>
+  </nav>
+
+  <!-- ===== CSV取込 ===== -->
+  <section class="tab on" id="tab-import">
+    <div class="card">
+      <div class="row">
+        <label>測定器のCSV（USBで取り込んだもの）<br><input type="file" id="csvFile" accept=".csv,text/csv"></label>
+      </div>
+      <div class="row">
+        <label>入力者 <input id="opIn" list="opList" placeholder="名前" style="width:140px"></label>
+        <datalist id="opList"></datalist>
+        <span class="muted">この PC で最後に入れた名前を覚えます</span>
+      </div>
+      <div class="muted">形式A（Fe1・Fe2・H/L 印字あり）と形式B（日付なし）のどちらも読めます。材質は溶解日報・注湯日報から自動で入ります。入らない時は一覧の材質欄で選びます。</div>
+    </div>
+    <div id="importSummary" class="card" hidden></div>
+    <div id="importErrors" class="card err" hidden></div>
+    <div class="tbl-wrap" id="importWrap" hidden>
+      <table>
+        <thead id="impHead"></thead>
+        <tbody id="importBody"></tbody>
+      </table>
+    </div>
+    <div class="row" id="importActions" hidden style="margin-top:10px;">
+      <button class="btn" id="saveImport">この内容を保存</button>
+      <button class="btn sub" id="cancelImport">取り消し</button>
+      <span id="importCount" class="muted"></span>
+    </div>
+  </section>
+
+  <!-- ===== 一覧・修正 ===== -->
+  <section class="tab" id="tab-list">
+    <div class="card">
+      <div class="row">
+        <label>期間（ロット）
+          <select id="period">
+            <option value="30">直近30日</option>
+            <option value="120">直近120日</option>
+            <option value="all">全期間</option>
+            <option value="custom">指定期間</option>
+          </select>
+        </label>
+        <span id="customBox" hidden>
+          <input type="date" id="fromD"> 〜 <input type="date" id="toD">
+        </span>
+        <button class="btn sub" id="showBtn">この期間を表示</button>
+      </div>
+      <div class="row">
+        <label>判定 <select id="fJudge">
+          <option value="">すべて</option><option>NG</option><option>注意</option><option>OK</option>
+          <option>材質未入力</option><option>規格なし</option><option>規格未登録</option><option>重複（参考）</option>
+        </select></label>
+        <label>区分 <select id="fKind"><option value="">すべて</option><option>溶解</option><option>注湯</option></select></label>
+        <label>検索 <input id="fText" placeholder="TP・コメント・材質" style="width:180px"></label>
+        <button class="btn sub" id="csvBtn">表示中の内容をCSVで書き出す</button>
+      </div>
+      <div class="muted" id="listInfo"></div>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead id="listHead"></thead>
+        <tbody id="listBody"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<div id="modal">
+  <div class="box">
+    <div class="row" style="justify-content:space-between;">
+      <h2 id="mTitle" style="margin:0;font-size:17px;"></h2>
+      <button class="btn sub" id="mClose">閉じる</button>
+    </div>
+    <div id="mBody"></div>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script src="config.js"></script>
+<script src="master.js"></script>
+<script src="plan.js"></script>
+<script src="comp-core.js"></script>
+<script>
+(function () {
+"use strict";
+const $ = s => document.querySelector(s);
+const CFG = window.APP_CONFIG || {};
+const M = window.COMP_MASTER || { spec: [], aim: [] };
+const PLAN = window.COMP_PLAN || { melt: {}, pour: {} };
+const C = window.CompCore;
+const MATS = ["FC200", "FC250", "その他H", "その他L", "その他SiL", "1204"];
+const ALL_EL = C.EL;
+const EDIT_EL = C.EL;
+const PASS_KEY = "comp-pass-v1", OP_KEY = "comp-operator-v1", DEV_KEY = "comp-device-v1";
+let pass = "", state = { preview: [], list: [], editId: null, impCols: [] };
+// 取り込んだ元素の列（データがある元素だけ、C.EL の順に並べる）
+function colsOf(recs) { return ALL_EL.filter(k => recs.some(r => r.el && r.el[k] != null)); }
+
+function safeGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function safeSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+function safeDel(k) { try { localStorage.removeItem(k); } catch (e) {} }
+function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+function toast(msg) { const t = $("#toast"); t.textContent = msg; t.style.display = "block"; clearTimeout(toast.t); toast.t = setTimeout(() => t.style.display = "none", 2200); }
+function showBanner(msg) { const b = $("#banner"); if (!msg) { b.hidden = true; return; } b.textContent = msg; b.hidden = false; }
+function deviceId() { let d = safeGet(DEV_KEY); if (!d) { d = "d" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); safeSet(DEV_KEY, d); } return d; }
+function nowStr() { const d = new Date(); const p = n => String(n).padStart(2, "0"); return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes()); }
+
+// ---------- 同期（Apps Script） ----------
+function syncUrl() { return (CFG.syncUrl || "").trim(); }
+async function callGet(params) {
+  const url = syncUrl() + "?" + new URLSearchParams(Object.assign({ pass: pass }, params)).toString();
+  const res = await fetch(url, { cache: "no-store" });
+  return res.json();
+}
+async function callPost(body) {
+  const res = await fetch(syncUrl(), { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(Object.assign({ pass: pass }, body)) });
+  return res.json();
+}
+function setSync(text) { $("#syncState").textContent = text; }
+
+async function verify(p) {
+  pass = p;
+  const j = await callGet({ action: "ping" });
+  if (!j.ok) throw new Error(j.error || "合言葉が違います");
+  safeSet(PASS_KEY, p);
+  hideGate(); setSync("同期済み ✓");
+}
+function showGate(msg) { $("#gate").hidden = false; $("#gateMsg").textContent = msg || ""; setTimeout(() => $("#passIn").focus(), 50); }
+function hideGate() { $("#gate").hidden = true; $("#gateMsg").textContent = ""; }
+async function connect() {
+  if (!syncUrl()) { setSync("同期先が未設定です"); showBanner("config.js の syncUrl が空です（設定手順の手順2-3を確認）"); return; }
+  const saved = safeGet(PASS_KEY) || "";
+  if (saved) { try { await verify(saved); return; } catch (e) { safeDel(PASS_KEY); } }
+  showGate("");
+}
+$("#passBtn").addEventListener("click", async () => {
+  const p = $("#passIn").value.trim(); if (!p) return;
+  $("#gateMsg").textContent = "確認中…";
+  try { await verify(p); $("#passIn").value = ""; }
+  catch (e) { $("#gateMsg").textContent = e.message || "合言葉が違います"; }
+});
+$("#passIn").addEventListener("keydown", e => { if (e.key === "Enter") $("#passBtn").click(); });
+
+// ---------- 判定の表示 ----------
+function jCls(j) { return ["OK", "NG", "注意"].includes(j) ? "j-" + j : "j-other"; }
+function jBadge(j) { return j ? `<span class="j ${jCls(j)}">${esc(j)}</span>` : ""; }
+function fmt(v) { if (v == null || v === "") return ""; const d = (String(v).split(".")[1] || "").length; return Number(v).toFixed(Math.max(2, d)); }
+function numCell(v) { return `<td class="n">${v == null ? "" : fmt(v)}</td>`; }
+
+// ---------- CSV取込 ----------
+$("#csvFile").addEventListener("change", async e => {
+  const f = e.target.files[0]; if (!f) return;
+  const buf = await f.arrayBuffer();
+  let text;
+  try { text = new TextDecoder("shift_jis").decode(buf); } catch (err) { text = new TextDecoder("utf-8").decode(buf); }
+  const parsed = C.parseCsv(text, { year: 2026 });
+  const recs = C.buildRecords(parsed, PLAN, M);
+  state.preview = recs.map(r => Object.assign({}, r, { skip: false }));
+  state.parsedFormat = parsed.format;
+  const errs = parsed.errors;
+  $("#importErrors").hidden = !errs.length;
+  $("#importErrors").innerHTML = errs.map(x => `${x.line}行目：${esc(x.name)}（${esc(x.reason)}）`).join("<br>");
+  renderPreview();
+});
+
+function renderPreview() {
+  const recs = state.preview;
+  const lots = [...new Set(recs.map(r => r.lot))].sort();
+  const cnt = {}; recs.forEach(r => cnt[r.judge || "-"] = (cnt[r.judge || "-"] || 0) + 1);
+  $("#importSummary").hidden = !recs.length;
+  $("#importSummary").innerHTML = recs.length
+    ? `<b>形式${esc(state.parsedFormat)}</b>　${recs.length} 件（ロット ${lots.join("・")}）<br>` +
+      Object.keys(cnt).map(k => `${jBadge(k)} ${cnt[k]}件`).join("　") +
+      `<div class="muted">材質未入力の行は、材質欄で選んでから保存してください。</div>`
+    : "";
+  state.impCols = colsOf(recs);
+  $("#impHead").innerHTML = importHead(state.impCols);
+  $("#importWrap").hidden = !recs.length;
+  $("#importActions").hidden = !recs.length;
+  $("#importBody").innerHTML = recs.map((r, i) => previewRow(r, i)).join("");
+  $("#importCount").textContent = "";
+}
+
+function matOptions(cur) {
+  return `<option value="">（未入力）</option>` + MATS.map(m => `<option${m === cur ? " selected" : ""}>${esc(m)}</option>`).join("");
+}
+function importHead(cols) {
+  return `<tr><th>保存</th><th>ロット</th><th>区分</th><th>TP</th><th>時刻（日報）</th><th>材質</th><th>材質元</th>` +
+    cols.map(k => `<th>${k}</th>`).join("") +
+    `<th>判定</th><th>注意・NG</th><th>コメント（TP）</th><th>備考</th></tr>`;
+}
+function previewRow(r, i) {
+  const inputs = state.impCols.map(k => {
+    const v = r.el[k];
+    const flag = r.hl && r.hl[k] ? `<span class="note">${esc(r.hl[k])}</span>` : "";
+    return `<td><input class="num" data-i="${i}" data-k="${k}" value="${v == null ? "" : v}" inputmode="decimal">${flag}</td>`;
+  }).join("");
+  return `<tr data-i="${i}" class="${r.skip ? "" : ""}">
+    <td><input type="checkbox" data-i="${i}" data-skip ${r.skip ? "" : "checked"}></td>
+    <td>${r.lot}</td><td>${esc(r.kind)}</td><td>${esc(r.tp)}</td>
+    <td><input class="tm" data-i="${i}" data-time value="${esc(r.time)}" placeholder="hh:mm"></td>
+    <td><select data-i="${i}" data-mat>${matOptions(r.mat)}</select></td>
+    <td class="muted">${esc(r.matSrc)}</td>
+    ${inputs}
+    <td class="jcell">${jBadge(r.judge)}</td>
+    <td class="note">${esc([].concat(r.ng, r.att).join(" "))}</td>
+    <td class="muted">${esc(r.comment)}</td>
+    <td class="note">${esc(r.note)}</td>
+  </tr>`;
+}
+
+function recalc(r) {
+  if (r.judge === "重複（参考）") return;   // 同じ試料名の前の測定は参考扱いのまま
+  const j = C.judge(r, M);
+  r.judge = j.judge; r.ng = j.ng; r.att = j.att;
+  r.note = C.checkNote(r);
+}
+
+$("#importBody").addEventListener("change", e => {
+  const t = e.target; const i = +t.dataset.i; const r = state.preview[i]; if (!r) return;
+  if (t.hasAttribute("data-skip")) { r.skip = !t.checked; return; }
+  if (t.hasAttribute("data-mat")) { r.mat = t.value; r.matSrc = t.value ? "手入力" : ""; }
+  else if (t.hasAttribute("data-time")) { r.time = normTime(t.value); t.value = r.time; }
+  else if (t.dataset.k) {
+    const v = t.value.trim();
+    if (v === "") delete r.el[t.dataset.k];
+    else if (isNaN(Number(v))) { t.value = ""; delete r.el[t.dataset.k]; }
+    else r.el[t.dataset.k] = Number(v);
+  }
+  recalc(r);
+  const row = t.closest("tr");
+  row.querySelector(".jcell").innerHTML = jBadge(r.judge);
+  row.querySelector("td:nth-last-child(2)").textContent = [].concat(r.ng, r.att).join(" ");
+  row.querySelector("td:last-child").textContent = r.note;
+});
+
+$("#cancelImport").addEventListener("click", () => { state.preview = []; $("#csvFile").value = ""; renderPreview(); });
+$("#saveImport").addEventListener("click", async () => {
+  const op = $("#opIn").value.trim();
+  if (!op) { toast("入力者を入れてください"); $("#opIn").focus(); return; }
+  safeSet(OP_KEY, op);
+  const rows = state.preview.filter(r => !r.skip).map(r => toRow(r, op));
+  if (!rows.length) { toast("保存する行がありません"); return; }
+  $("#saveImport").disabled = true;
+  try {
+    const j = await callPost({ action: "upsert", rows: rows });
+    if (!j.ok) throw new Error(j.error);
+    toast(`保存しました（${j.saved} 件）`);
+    setSync("同期済み ✓");
+    state.preview = []; $("#csvFile").value = ""; renderPreview();
+  } catch (e) { toast("保存できませんでした：" + e.message); setSync("同期できませんでした"); }
+  finally { $("#saveImport").disabled = false; }
+});
+
+function toRow(r, op, deleted) {
+  return { id: r.id, lot: r.lot, name: r.name, kind: r.kind, tp: r.tp, time: r.time || "", mtime: r.mtime || "", mat: r.mat || "",
+    matSrc: r.matSrc || "", el: r.el, hl: r.hl || {}, comment: r.comment || "", src: r.src || "",
+    judge: r.judge || "", ng: (r.ng || []).join(" "), att: (r.att || []).join(" "), note: r.note || "",
+    operator: op, enteredAt: nowStr(), device: deviceId(), deleted: !!deleted };
+}
+
+// 時刻の入力：「8:00」「0800」などを hh:mm にそろえる（読めなければ空にする）
+function normTime(v) {
+  const s = String(v || "").trim().replace(/：/g, ":");
+  let m = /^(\d{1,2}):(\d{2})$/.exec(s) || /^(\d{2})(\d{2})$/.exec(s);
+  if (!m) return "";
+  const h = +m[1], mi = +m[2];
+  if (h > 23 || mi > 59) return "";
+  return String(h).padStart(2, "0") + ":" + String(mi).padStart(2, "0");
+}
+
+// ---------- 一覧・修正 ----------
+function lotOfDate(d) { const p = n => String(n).padStart(2, "0"); return +(String(d.getFullYear()).slice(2) + p(d.getMonth() + 1) + p(d.getDate())); }
+function periodRange() {
+  const v = $("#period").value;
+  if (v === "all") return { from: 0, to: 999999 };
+  if (v === "custom") {
+    const f = $("#fromD").value, t = $("#toD").value;
+    const toL = s => { const d = new Date(s); return lotOfDate(d); };
+    return { from: f ? toL(f) : 0, to: t ? toL(t) : 999999 };
+  }
+  const d = new Date(); d.setDate(d.getDate() - Number(v));
+  return { from: lotOfDate(d), to: 999999 };
+}
+$("#period").addEventListener("change", () => { $("#customBox").hidden = $("#period").value !== "custom"; });
+$("#showBtn").addEventListener("click", loadList);
+async function loadList() {
+  const { from, to } = periodRange();
+  setSync("読み込み中…");
+  try {
+    const j = await callGet({ action: "list", from: from, to: to });
+    if (!j.ok) throw new Error(j.error);
+    state.list = j.rows; setSync("同期済み ✓");
+    renderList();
+  } catch (e) { $("#listInfo").textContent = "読み込みエラー：" + e.message; setSync("同期できませんでした"); }
+}
+function filteredList() {
+  const jf = $("#fJudge").value, kf = $("#fKind").value, tf = $("#fText").value.trim();
+  return state.list.filter(r => (!jf || r.judge === jf) && (!kf || r.kind === kf) &&
+    (!tf || [r.tp, r.comment, r.mat, r.name].join(" ").includes(tf)));
+}
+// 並び順：ロット → 区分（溶解→注湯）→ TP（番号順）。時刻は日をまたぐため使わない
+function cmpRows(a, b) {
+  if (a.lot !== b.lot) return a.lot - b.lot;
+  if (a.kind !== b.kind) return a.kind === "溶解" ? -1 : 1;
+  const pa = String(a.tp).split("-").map(Number), pb = String(b.tp).split("-").map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d) return d;
+  }
+  return String(a.mtime || "").localeCompare(String(b.mtime || ""));
+}
+function renderList() {
+  const rows = filteredList().sort(cmpRows);
+  const cols = colsOf(rows);
+  $("#listInfo").textContent = `${rows.length} 件（全 ${state.list.length} 件）。行をクリックすると修正できます。`;
+  $("#listHead").innerHTML = `<tr><th>ロット</th><th>区分</th><th>TP</th><th>時刻</th><th>材質</th>` +
+    cols.map(k => `<th>${k}</th>`).join("") + `<th>判定</th><th>注意・NG</th><th>コメント</th><th>入力者</th></tr>`;
+  $("#listBody").innerHTML = rows.map(r => `<tr class="clk" data-id="${esc(r.id)}">
+    <td>${r.lot}</td><td>${esc(r.kind)}</td><td>${esc(r.tp)}</td><td>${esc(r.time)}</td><td>${esc(r.mat)}</td>
+    ${cols.map(k => numCell(r.el[k])).join("")}
+    <td>${jBadge(r.judge)}</td><td class="note">${esc([r.ng, r.att].filter(Boolean).join(" "))}</td>
+    <td class="muted">${esc(r.comment)}</td><td class="muted">${esc(r.operator)}</td></tr>`).join("");
+}
+["#fJudge", "#fKind"].forEach(s => $(s).addEventListener("change", renderList));
+$("#fText").addEventListener("input", renderList);
+
+$("#listBody").addEventListener("click", e => {
+  const tr = e.target.closest("tr[data-id]"); if (!tr) return;
+  openEdit(tr.dataset.id);
+});
+
+function openEdit(id) {
+  const r = state.list.find(x => x.id === id); if (!r) return;
+  state.editId = id;
+  const el = Object.assign({}, r.el);
+  $("#mTitle").textContent = `${r.lot}　${r.kind}　No.${r.tp}`;
+  $("#mBody").innerHTML = `
+    <div class="row"><label>時刻（日報） <input id="eTime" value="${esc(r.time)}" placeholder="hh:mm" style="width:90px"></label>
+      <span class="muted">${r.kind === "溶解" ? "出湯時刻" : "そのチャージの初回の時刻"}（日報に無い時は入れてください）</span></div>
+    <div class="row"><label>材質 <select id="eMat">${matOptions(r.mat)}</select></label>
+      <span class="muted">${esc(r.matSrc || "")}</span></div>
+    <div class="grid">${EDIT_EL.map(k => `<label>${k}<input class="num" id="e_${k}" value="${el[k] == null ? "" : el[k]}" inputmode="decimal"></label>`).join("")}</div>
+    <div class="row" style="margin-top:8px;"><label style="flex:1">コメント（TPの記載）<input id="eComment" class="wide" value="${esc(r.comment)}"></label></div>
+    <div class="row"><label style="flex:1">備考<input id="eNote" class="wide" value="${esc(r.note)}"></label></div>
+    <div class="row"><label>入力者 <input id="eOp" value="${esc(localOp())}" style="width:140px"></label></div>
+    <div class="row">
+      <button class="btn" id="eSave">保存</button>
+      <button class="btn danger" id="eDel">この記録を削除</button>
+      <span id="eMsg" class="err"></span>
+    </div>
+    <div class="muted">判定：${esc(r.judge)}　${esc([].concat(r.ng || [], r.att || []).join(" "))}</div>`;
+  $("#modal").style.display = "flex";
+}
+function localOp() { return safeGet(OP_KEY) || ""; }
+$("#mClose").addEventListener("click", () => { $("#modal").style.display = "none"; });
+$("#modal").addEventListener("click", e => { if (e.target.id === "modal") $("#modal").style.display = "none"; });
+$("#mBody").addEventListener("click", async e => {
+  if (e.target.id === "eSave") await saveEdit(false);
+  if (e.target.id === "eDel") { if (confirm("この記録を削除します（一覧から消えます）。よろしいですか？")) await saveEdit(true); }
+});
+async function saveEdit(del) {
+  const r = state.list.find(x => x.id === state.editId); if (!r) return;
+  const op = $("#eOp").value.trim();
+  if (!op) { $("#eMsg").textContent = "入力者を入れてください"; return; }
+  const nr = { id: r.id, lot: r.lot, name: r.name, kind: r.kind, tp: r.tp, time: normTime($("#eTime").value), mtime: r.mtime || "", mat: $("#eMat").value,
+    matSrc: $("#eMat").value ? (r.matSrc && r.matSrc !== "手入力" ? r.matSrc + "（修正）" : "手入力") : "",
+    judge: r.judge,
+    el: Object.assign({}, r.el), hl: r.hl || {}, comment: $("#eComment").value.trim(), src: r.src, note: $("#eNote").value.trim() };
+  EDIT_EL.forEach(k => { const v = $("#e_" + k).value.trim(); if (v === "") delete nr.el[k]; else nr.el[k] = Number(v); });
+  recalc(nr);
+  const row = toRow(nr, op, del);
+  try {
+    const j = await callPost({ action: "upsert", rows: [row] });
+    if (!j.ok) throw new Error(j.error);
+    safeSet(OP_KEY, op);
+    $("#modal").style.display = "none";
+    toast(del ? "削除しました" : "保存しました");
+    await loadList();
+  } catch (err) { $("#eMsg").textContent = "保存できませんでした：" + err.message; }
+}
+
+// ---------- CSV書出し ----------
+$("#csvBtn").addEventListener("click", () => {
+  const rows = filteredList();
+  const head = ["ロット", "区分", "TP", "時刻（日報）", "測定時刻", "材質", "材質元", ...ALL_EL, "判定", "NG", "注意", "コメント", "備考", "入力者", "登録日時"];
+  const body = rows.map(r => [r.lot, r.kind, r.tp, r.time, r.mtime, r.mat, r.matSrc, ...ALL_EL.map(k => r.el[k] == null ? "" : r.el[k]),
+    r.judge, r.ng, r.att, r.comment, r.note, r.operator, r.enteredAt]);
+  const csv = [head, ...body].map(line => line.map(v => { const s = String(v == null ? "" : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }).join(",")).join("\r\n");
+  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+  a.download = "成分記録_" + new Date().toISOString().slice(0, 10) + ".csv"; a.click();
+});
+
+// ---------- タブ・初期化 ----------
+document.querySelectorAll("nav.tabs button").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll("nav.tabs button").forEach(x => x.classList.toggle("on", x === b));
+  document.querySelectorAll("section.tab").forEach(s => s.classList.toggle("on", s.id === "tab-" + b.dataset.tab));
+  if (b.dataset.tab === "list" && state.list.length === 0 && pass) loadList();
+}));
+$("#opIn").value = localOp();
+window.addEventListener("error", e => showBanner("画面でエラーが起きました：" + (e.message || "")));
+connect();
+})();
+</script>
+</body>
+</html>
